@@ -28,49 +28,71 @@ write:	; (int fd, void* buffer, int count)
 	syscall
 	ret
 
+; like write but stops when it sees NULL. be careful using it
+print:	; (int fd, void* buffer)
+	mov r8, 0
+	jmp .loopcheck
+	.loop:
+		inc r8
+		.loopcheck:
+			cmp byte [rsi + r8], 0
+			jne .loop
+
+	cmp r8, 0
+	je .empty
+
+	mov rdx, r8
+	call write
+
+	.empty:
+		ret
+
 ; we use the cdecl calling convention in this program
 print_uint64_dec:		; (uint64 number)
 	push rbp
 	mov rbp, rsp
 	
-	sub rsp, 20
-	mov qword [rbp - 20], 0
-	mov qword [rbp - 12], 0
-	mov dword [rbp - 4], 0
-	mov byte [rbp - 20], 48
-	mov r8, 0
+	; 20 bytes is all the memory you'll ever need to store a 64-bit number
+	; calculated using: len(str(0xffffffffffffffff)) * 1
+	sub rsp, 21
+	mov qword [rbp - 21], 0
+	mov qword [rbp - 13], 0
+	mov dword [rbp - 5], 0		; zero out the blocks
+	mov byte [rbp - 1], 0
+	mov byte [rbp - 21], 48		; first byte is '0' to prevent logical errors in the loop below
 
-	mov rax, [rbp + 16]
+	mov r8, 0					; index into the string
+	mov rax, [rbp + 16]			; stores the quotient
 	jmp .loopcheck
 	.loop:
-		mov rdx, 0
+		mov rdx, 0				; stores the remainder
 		mov rcx, 10
 		div rcx
 
-		add rdx, 48
-		mov [rbp - 20 + r8], rdx
+		add rdx, 48				; convert from raw number to ascii
+		mov [rbp - 21 + r8], rdx
+
 		inc r8
 
 		.loopcheck:
 			cmp rax, 0
 			jne .loop
 
-	mov rax, r8
 	mov rdx, 0
+	mov rax, r8					; r8 now holds the number of characters in the string
 	mov rcx, 2
 	div rcx
 
-	mov r9, 0
-
+	mov r9, 0					; holds the byte to swap. r9 and (r8 - 1 - r9)
 	jmp .loopcheck_swap_bytes
 	.loop_swap_bytes:
-		mov dil, [rbp - 20 + r9]
-		mov r11, r8
-		dec r11
-		sub r11, r9
-		mov cl, [rbp - 20 + r11]
-		mov byte [rbp - 20 + r9], cl
-		mov byte [rbp - 20 + r11], dil
+		mov dl, [rbp - 21 + r9]
+		mov r10, r8
+		dec r10
+		sub r10, r9
+		mov cl, [rbp - 21 + r10]
+		mov byte [rbp - 21 + r9], cl
+		mov byte [rbp - 21 + r10], dl
 
 		inc r9
 
@@ -80,11 +102,10 @@ print_uint64_dec:		; (uint64 number)
 
 	mov rdi, 1
 	mov rsi, rbp
-	sub rsi, 20
-	mov rdx, 20
-	call write
+	sub rsi, 21
+	call print
 
-	add rsp, 20
+	add rsp, 21
 
 	pop rbp
 	ret
@@ -92,7 +113,7 @@ print_uint64_dec:		; (uint64 number)
 _start:
 	mov rbp, rsp
 
-	push rsp
+	push 123456789
 	call print_uint64_dec
 	add rsp, 8
 
