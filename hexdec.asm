@@ -3,7 +3,7 @@ global _start
 section .data
 filepath: db "ohyeah", 0
 eight: db "kratuvid"
-newline: db "\n"
+newline: db 10
 
 O_CREAT: equ 100o
 O_APPEND: equ 2000o
