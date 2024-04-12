@@ -223,30 +223,6 @@ _start:
 
 	; ------------
 
-	sub rsp, 50
-
-	push word 0x34
-	push qword 5
-	lea rax, [rbp - 50]
-	push rax
-	call memset8
-	add rsp, 18
-
-	mov rdi, 1
-	lea rsi, [rbp - 50]
-	mov rdx, 50
-	call write
-
-	add rsp, 50
-
-	mov rdi, 0
-	call exit
-
-
-	push 123456789
-	call print_uint64_dec
-	add rsp, 8
-	
 	mov rdi, filepath
 	mov rsi, O_RDONLY
 	mov rdx, 0
