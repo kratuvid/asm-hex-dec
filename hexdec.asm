@@ -7,6 +7,8 @@ newline: db 10
 null: db 0
 
 decimal_syms: db "0123456789"
+hexadecimal_syms: db "0123456789abcdef"
+octal_syms: db "012345678"
 
 O_CREAT: equ 100o
 O_APPEND: equ 2000o
@@ -32,7 +34,12 @@ write:	; (int fd, void* buffer, int count)
 	ret
 
 ; like write but stops when it sees NULL. be careful using it
-print:	; (int fd, void* buffer)
+print:		; (uint64 fd +16, void* buffer +24)
+	push rbp
+	mov rbp, rsp
+
+	mov rsi, [rbp + 24]
+
 	mov r8, 0
 	jmp .loopcheck
 	.loop:
@@ -44,129 +51,83 @@ print:	; (int fd, void* buffer)
 	cmp r8, 0
 	je .empty
 
+	mov rdi, [rbp + 16]
 	mov rdx, r8
 	call write
 
 	.empty:
+		pop rbp
 		ret
-
-; we use the cdecl calling convention in this program
-print_uint64_dec:		; (uint64 number)
-	push rbp
-	mov rbp, rsp
-	
-	; 20 bytes is all the memory you'll ever need to store a 64-bit number
-	; calculated using: len(str(0xffffffffffffffff)) * 1
-	sub rsp, 21
-	mov qword [rbp - 21], 0
-	mov qword [rbp - 13], 0
-	mov dword [rbp - 5], 0		; zero out the blocks
-	mov byte [rbp - 1], 0
-	mov byte [rbp - 21], 48		; first byte is '0' to prevent logical errors in the loop below
-
-	mov r8, 0					; index into the string
-	mov rax, [rbp + 16]			; stores the quotient
-	jmp .loopcheck
-	.loop:
-		mov rdx, 0				; stores the remainder
-		mov rcx, 10
-		div rcx
-
-		add rdx, 48				; convert from raw number to ascii
-		mov [rbp - 21 + r8], rdx
-
-		inc r8
-
-		.loopcheck:
-			cmp rax, 0
-			jne .loop
-
-	mov rdx, 0
-	mov rax, r8					; r8 now holds the number of characters in the string
-	mov rcx, 2
-	div rcx
-
-	mov r9, 0					; holds the byte to swap. r9 and (r8 - 1 - r9)
-	jmp .loopcheck_swap_bytes
-	.loop_swap_bytes:
-		mov dl, [rbp - 21 + r9]
-		mov r10, r8
-		dec r10
-		sub r10, r9
-		mov cl, [rbp - 21 + r10]
-		mov byte [rbp - 21 + r9], cl
-		mov byte [rbp - 21 + r10], dl
-
-		inc r9
-
-		.loopcheck_swap_bytes:
-			cmp r9, rax
-			jl .loop_swap_bytes
-
-	mov rdi, 1
-	mov rsi, rbp
-	sub rsi, 21
-	call print
-
-	add rsp, 21
-
-	pop rbp
-	ret
 
 memset8:		; (void* buffer +16, uint64 size +24, uint16 what +32)
 	push rbp
 	mov rbp, rsp
 
-	mov sil, [rbp + 32]
-	mov rax, [rbp + 24]
-	dec rax
-	jmp .loopcheck
-	.loop:
-		lea rdi, [rbp + 16 + rax]
-		mov byte [rdi], sil
-		dec rax
-		.loopcheck:
-			cmp rax, 0
-			jge .loop
+	; Loop based
+	; mov sil, [rbp + 32]
+	; mov rax, [rbp + 24]
+	; dec rax
 
-	; Doesn't work for some reason
-	; mov al, [rbp + 32]
-	; lea rdi, [rbp + 16]
-	; cld
-	; mov rcx, [rbp + 24]
-	; rep stosb
+	; mov r8, [rbp + 16]
+
+	; jmp .loopcheck
+	; .loop:
+	; 	mov byte [r8 + rax], sil
+	; 	dec rax
+
+	; 	.loopcheck:
+	; 		cmp rax, 0
+	; 		jge .loop
+
+	mov al, [rbp + 32]
+	mov rdi, [rbp + 16]
+	mov rcx, [rbp + 24]
+	cld
+	rep stosb
 
 	pop rbp
 	ret
 
-; number +16: raw number to print
-; base +24: base to convert to. Eg. 16
-; max_string +25: length of string which can accomodate the biggest number in ascii.
-;                 Eg. len(str(0xffffffffffffffff)) * 1 for base 10
-; symbols +26: symbols to represent individual positions. Eg. for base 16 it is "0123456789abcdef"
-print_uint64_generic:		; (uint64 number, uint8 base, uint8 max_string, char* symbols)
+; number: number to print
+; base: base to print in. like 16
+; max_string: length of the string which can contain the largest number
+;             eg. len(str(0xffffffffffffffff)) * 1 for base 10
+; symbols: symbols to represent individual positions. for base 16, "0123456789abcdef"
+print_uint64_generic:	; (uint64 number +16, uint64 base +24, uint64 max_string +32, char* symbols +40)
 	push rbp
 	mov rbp, rsp
+	push rbx
+	push r12
 
-	sub rsp, [rbp + 25]			; accomodate space to store the converted string
-	dec rsp						; for NULL
+	mov rbx, [rbp + 32]			; perma register, stores the actual length = max_length + 1
+	inc rbx
 
-	mov qword [rbp - 21], 0
-	mov qword [rbp - 13], 0
-	mov dword [rbp - 5], 0		; zero out the blocks
-	mov byte [rbp - 1], 0
-	mov byte [rbp - 21], 48		; first byte is '0' to prevent logical errors in the loop below
+	sub rsp, rbx				; variable, to store the resultant string
+
+	mov r12, rbp				; perma register, address of the resultant string
+	sub r12, rbx
+
+	push word 0					; memset the resultant string
+	push rbx
+	push r12
+	call memset8
+	add rsp, 18
+
+	mov rdi, [rbp + 40]			; pointer to the symbols array
+	mov sil, [rdi + 0]			; the symbol at index 0
+	mov byte [r12], sil			; first byte is '0' to prevent logical errors in the loop below
 
 	mov r8, 0					; index into the string
-	mov rax, [rbp + 16]			; stores the quotient
+	mov rax, [rbp + 16]			; dividend
 	jmp .loopcheck
 	.loop:
-		mov rdx, 0				; stores the remainder
-		mov rcx, 10
+		mov rdx, 0				; needs to be done for the div instruction
+		mov rcx, [rbp + 24]		; divisor
 		div rcx
 
-		add rdx, 48				; convert from raw number to ascii
-		mov [rbp - 21 + r8], rdx
+		mov rdi, [rbp + 40]		; get the symbol at index rdx
+		mov sil, [rdi + rdx]
+		mov [r12 + r8], sil		; just set at the appropriate index in the resultant string
 
 		inc r8
 
@@ -182,13 +143,13 @@ print_uint64_generic:		; (uint64 number, uint8 base, uint8 max_string, char* sym
 	mov r9, 0					; holds the byte to swap. r9 and (r8 - 1 - r9)
 	jmp .loopcheck_swap_bytes
 	.loop_swap_bytes:
-		mov dl, [rbp - 21 + r9]
+		mov dl, [r12 + r9]
 		mov r10, r8
 		dec r10
 		sub r10, r9
-		mov cl, [rbp - 21 + r10]
-		mov byte [rbp - 21 + r9], cl
-		mov byte [rbp - 21 + r10], dl
+		mov cl, [r12 + r10]
+		mov [r12 + r9], cl
+		mov [r12 + r10], dl
 
 		inc r9
 
@@ -197,12 +158,55 @@ print_uint64_generic:		; (uint64 number, uint8 base, uint8 max_string, char* sym
 			jl .loop_swap_bytes
 
 	mov rdi, 1
-	mov rsi, rbp
-	sub rsi, 21
-	call print
+	mov rsi, r12
+	mov rdx, r8
+	call write
 
-	inc rsp
-	add rsp, [rbp + 25]
+	add rsp, rbx
+
+	pop r12
+	pop rbx
+	pop rbp
+	ret
+
+print_uint64_decimal:	; (uint64 number +16)
+	push rbp
+	mov rbp, rsp
+
+	push decimal_syms
+	push qword 20
+	push qword 10
+	push qword [rbp + 16]
+	call print_uint64_generic
+	add rsp, 32
+
+	pop rbp
+	ret
+
+print_uint64_hexadecimal:	; (uint64 number +16)
+	push rbp
+	mov rbp, rsp
+
+	push hexadecimal_syms
+	push qword 16
+	push qword 16
+	push qword [rbp + 16]
+	call print_uint64_generic
+	add rsp, 32
+
+	pop rbp
+	ret
+
+print_uint64_octal:	; (uint64 number +16)
+	push rbp
+	mov rbp, rsp
+
+	push octal_syms
+	push qword 22
+	push qword 8
+	push qword [rbp + 16]
+	call print_uint64_generic
+	add rsp, 32
 
 	pop rbp
 	ret
@@ -210,10 +214,19 @@ print_uint64_generic:		; (uint64 number, uint8 base, uint8 max_string, char* sym
 _start:
 	mov rbp, rsp
 
+	push qword 0q450
+	call print_uint64_octal
+	add rsp, 8
+
+	mov rdi, 0
+	call exit
+
+	; ------------
+
 	sub rsp, 50
 
-	push word 0x45
-	push qword 50
+	push word 0x34
+	push qword 5
 	lea rax, [rbp - 50]
 	push rax
 	call memset8
@@ -229,15 +242,6 @@ _start:
 	mov rdi, 0
 	call exit
 
-	push decimal_syms
-	push byte 20
-	push byte 10
-	push qword 123456789
-	call print_uint64_generic
-	add rsp, 18
-
-	mov rdi, 0
-	call exit
 
 	push 123456789
 	call print_uint64_dec

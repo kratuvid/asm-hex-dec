@@ -1,4 +1,4 @@
-.PHONY: clean
+.PHONY: clean run
 
 hexdec: hexdec.asm
 	nasm -g -felf64 $^ -o $@.o
