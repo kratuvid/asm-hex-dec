@@ -2,13 +2,17 @@ global _start
 
 section .data
 filepath: db "ohyeah", 0
-eight: db "kratuvid"
+eight: db "kratuvid", 0
+eight_bad: db "kratuviD", 0
 newline: db 10
 null: db 0
 
 help_arg: db "--help", 0
 generic_arg: db "--xy", 0
-help_string: db "Convert to and from, (h)exadecimal, (d)ecimal, (o)ctal, (b)inary and (r)aw", 0
+help_string: db "Options: --help - prints this", 10
+			 db "         --xy - convert from base x to y", 10
+			 db "Bases: he(x)adecimal, (d)ecimal, (o)ctal, (b)inary and (r)aw", 0
+all_bases_string: db "xdobr", 0
 
 decimal_syms: db "0123456789"
 hexadecimal_syms: db "0123456789abcdef"
@@ -38,6 +42,61 @@ write:	; (int fd, void* buffer, int count)
 	syscall
 	ret
 
+; returns: 0 if is in, else 1
+; checks if char is in str
+; is expected to have a null terminator
+strin:		; (uint16 char +16, char* str +18)
+	push rbp
+	mov rbp, rsp
+
+	push qword [rbp + 18]
+	call strlen
+	add rsp, 8
+	mov r9, rax
+
+	mov rax, 0				; assume equal
+
+	mov cx, [rbp + 16]
+	and cx, 0x00ff
+	mov r8, 0
+	jmp .loopcheck
+	.loop:
+		mov rdx, [rbp + 18]
+		cmp cl, [rdx + r8]
+		je .exit
+
+		inc r8
+
+		.loopcheck:
+			cmp r8, r9
+			jl .loop
+
+	mov rax, 1
+	
+	.exit:
+		pop rbp
+		ret
+
+; expected to have a null terminator
+strlen:		; (char* buffer +16)
+	push rbp
+	mov rbp, rsp
+	
+	mov rsi, [rbp + 16]
+
+	mov rax, 0
+	.loop:
+		cmp byte [rsi + rax], 0
+		je .exit
+
+		inc rax
+
+		jmp .loop
+
+	.exit:
+		pop rbp
+		ret
+
 ; like write but stops when it sees NULL. be careful using it
 print:		; (uint64 fd +16, void* buffer +24)
 	push rbp
@@ -45,19 +104,17 @@ print:		; (uint64 fd +16, void* buffer +24)
 
 	mov rsi, [rbp + 24]
 
-	mov r8, 0
-	jmp .loopcheck
-	.loop:
-		inc r8
-		.loopcheck:
-			cmp byte [rsi + r8], 0
-			jne .loop
+	push rsi
+	push rsi
+	call strlen
+	add rsp, 8
+	pop rsi
 
-	cmp r8, 0
+	cmp rax, 0
 	je .empty
 
 	mov rdi, [rbp + 16]
-	mov rdx, r8
+	mov rdx, rax
 	call write
 
 	.empty:
@@ -141,9 +198,9 @@ print_uint64_generic:	; (uint64 number +16, uint64 base +24, uint64 max_string +
 			jne .loop
 
 	cmp r8, 0
-	jne .out
+	jne .skip
 	mov r8, 1
-	.out:
+	.skip:
 
 	mov rdx, 0
 	mov rax, r8					; r8 now holds the number of characters in the string
@@ -235,8 +292,189 @@ print_uint64_binary:	; (uint64 number +16)
 	pop rbp
 	ret
 
+; return 0 if equal, else 1
+; both strings are expected to have a null terminator
+strcmp:		; (char* first +16, char* second +24)
+	push rbp
+	mov rbp, rsp
+
+	mov rcx, [rbp + 16]		; first string
+	mov rdx, [rbp + 24]		; second string
+
+	mov rax, 0				; assume equal
+
+	mov r8, 0
+	.loop:
+		mov dil, [rcx + r8]
+		cmp dil, [rdx + r8]
+		
+		jne .unequal
+
+		cmp dil, 0
+		je .exit
+		cmp byte [rdx + r8], 0
+		je .exit
+
+		inc r8
+
+		jmp .loop
+
+	jmp .exit
+
+	.unequal:
+		mov rax, 1
+	.exit:
+		pop rbp
+		ret
+
+print_help:
+	push rbp
+	mov rbp, rsp
+
+	push help_string
+	push qword 1
+	call print
+	add rsp, 16
+
+	pop rbp
+	ret
+
+; returns: from is in `al`, and to is in the `ah` register
+parse_arguments:	; (void* _startrbp +16)
+	push rbp
+	mov rbp, rsp
+	push r12
+
+	mov r12, [rbp + 16]
+
+	cmp qword [r12], 1
+	jle .help_and_quit
+
+	mov r8, 2
+	jmp .loopcheck
+	.loop:
+		; push r8
+		; mov rax, [r12 + 8 * r8]
+		; push rax
+		; push 1
+		; call print
+		; add rsp, 16
+		; pop r8
+
+		push r8
+		push help_arg
+		push qword [r12 + 8 * r8]
+		call strcmp
+		add rsp, 16
+		pop r8
+		cmp rax, 0
+		je .help_and_quit
+
+		push r8
+		push qword [r12 + 8 * r8]
+		call strlen
+		add rsp, 8
+		pop r8
+		cmp rax, 4
+		je .handle_xy
+		.handle_xy_return:
+
+		; mov rdi, 1
+		; mov rsi, newline
+		; mov rdx, 1
+		; call write
+
+		inc r8
+
+		.loopcheck:
+			cmp r8, [r12]
+			jle .loop
+
+	.exit:
+		pop r12
+		pop rbp
+		ret
+
+	.handle_xy:
+		push r13
+		push r14
+
+		mov r12, [rbp + 16]
+
+		mov rax, [r12 + 8 * r8]
+		mov rcx, 0
+		mov ecx, [rax]
+		mov rax, rcx
+
+		mov r13, rax
+		shr r13, 16
+		and r13, 0x00ff
+
+		mov r14, rax
+		shr r14, 24
+
+		push r8
+		push all_bases_string
+		mov rax, r13
+		push ax
+		call strin
+		add rsp, 10
+		pop r8
+
+		cmp rax, 1
+		je .handle_xy_return_wrap
+
+		push r8
+		push all_bases_string
+		mov rax, r14
+		push ax
+		call strin
+		add rsp, 10
+		pop r8
+
+		cmp rax, 1
+		je .handle_xy_return_wrap
+
+		shl r14, 8
+		mov rax, r14
+		or rax, r13
+
+		pop r14
+		pop r13
+		jmp .exit
+
+		.handle_xy_return_wrap:
+			pop r14
+			pop r13
+			jmp .handle_xy_return
+
+	.help_and_quit:
+		call print_help
+		mov rdi, 1
+		call exit
+
 _start:
 	mov rbp, rsp
+
+	push rbp
+	call parse_arguments
+	add rsp, 8
+
+	sub rsp, 2
+	mov [rbp - 2], al
+	mov [rbp - 1], ah
+
+	mov rdi, 1
+	lea rsi, [rbp - 2]
+	mov rdx, 2
+	call write
+	
+	add rsp, 2
+
+	mov rdi, 0
+	call exit
+
+	; ------------
 
 	mov r8, 0
 	jmp .loopcheck0
