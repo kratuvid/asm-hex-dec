@@ -11,7 +11,7 @@ help_arg: db "--help", 0
 generic_arg: db "--xy", 0
 help_string: db "Options: --help - prints this", 10
 			 db "         --xy - convert from base x to y", 10
-			 db "Bases: he(x)adecimal, (d)ecimal, (o)ctal, (b)inary and (r)aw", 0
+			 db "Bases: he(x)adecimal, (d)ecimal, (o)ctal, (b)inary and (r)aw", 10, 0
 all_bases_string: db "xdobr", 0
 
 decimal_syms: db "0123456789"
@@ -339,7 +339,7 @@ print_help:
 	pop rbp
 	ret
 
-; returns: from is in `al`, and to is in the `ah` register
+; returns: from is in `al`, and to is in the `ah` register. 0 if failed
 parse_arguments:	; (void* _startrbp +16)
 	push rbp
 	mov rbp, rsp
@@ -353,14 +353,6 @@ parse_arguments:	; (void* _startrbp +16)
 	mov r8, 2
 	jmp .loopcheck
 	.loop:
-		; push r8
-		; mov rax, [r12 + 8 * r8]
-		; push rax
-		; push 1
-		; call print
-		; add rsp, 16
-		; pop r8
-
 		push r8
 		push help_arg
 		push qword [r12 + 8 * r8]
@@ -379,16 +371,13 @@ parse_arguments:	; (void* _startrbp +16)
 		je .handle_xy
 		.handle_xy_return:
 
-		; mov rdi, 1
-		; mov rsi, newline
-		; mov rdx, 1
-		; call write
-
 		inc r8
 
 		.loopcheck:
 			cmp r8, [r12]
 			jle .loop
+
+	mov rax, 0
 
 	.exit:
 		pop r12
@@ -461,6 +450,7 @@ _start:
 	add rsp, 8
 
 	sub rsp, 2
+
 	mov [rbp - 2], al
 	mov [rbp - 1], ah
 
