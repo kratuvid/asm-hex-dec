@@ -6,9 +6,14 @@ eight: db "kratuvid"
 newline: db 10
 null: db 0
 
+help_arg: db "--help", 0
+generic_arg: db "--xy", 0
+help_string: db "Convert to and from, (h)exadecimal, (d)ecimal, (o)ctal, (b)inary and (r)aw", 0
+
 decimal_syms: db "0123456789"
 hexadecimal_syms: db "0123456789abcdef"
 octal_syms: db "012345678"
+binary_syms: db "01"
 
 O_CREAT: equ 100o
 O_APPEND: equ 2000o
@@ -135,6 +140,11 @@ print_uint64_generic:	; (uint64 number +16, uint64 base +24, uint64 max_string +
 			cmp rax, 0
 			jne .loop
 
+	cmp r8, 0
+	jne .out
+	mov r8, 1
+	.out:
+
 	mov rdx, 0
 	mov rax, r8					; r8 now holds the number of characters in the string
 	mov rcx, 2
@@ -211,12 +221,69 @@ print_uint64_octal:	; (uint64 number +16)
 	pop rbp
 	ret
 
+print_uint64_binary:	; (uint64 number +16)
+	push rbp
+	mov rbp, rsp
+
+	push binary_syms
+	push qword 64
+	push qword 2
+	push qword [rbp + 16]
+	call print_uint64_generic
+	add rsp, 32
+
+	pop rbp
+	ret
+
 _start:
 	mov rbp, rsp
 
-	push qword 0q450
-	call print_uint64_octal
-	add rsp, 8
+	mov r8, 0
+	jmp .loopcheck0
+	.loop0:
+		push r8
+		push qword r8
+		call print_uint64_binary
+		add rsp, 8
+		pop r8
+
+		mov rdi, 1
+		mov rsi, newline
+		mov rdx, 1
+		call write
+
+		inc r8
+
+		.loopcheck0:
+			cmp r8, 20
+			jle .loop0
+
+	mov rdi, 0
+	call exit
+
+	; ------------
+
+	mov r8, 1
+	jmp .loopcheck
+	.loop:
+		push r8
+		mov rax, [rbp + 8 * r8]
+		push rax
+		push 1
+		call print
+		add rsp, 16
+		pop r8
+
+		mov rdi, 1
+		mov rsi, newline
+		mov rdx, 1
+		call write
+
+		inc r8
+
+		.loopcheck:
+			cmp r8, [rbp]
+			jle .loop
 
 	mov rdi, 0
 	call exit
