@@ -7,7 +7,8 @@ null: db 0
 help_arg: db "--help", 0
 generic_arg: db "--xy", 0
 cont_arg: db "--cont", 0
-help_string: db "Options: --help - prints this", 10
+help_string: db "Convert to and from various bases", 10
+			 db "Options: --help - prints this", 10
 			 db "         --xy - convert from base x to y", 10
 			 db "         --cont - run indefinitely", 10
 			 db "Bases: he(x)adecimal, (d)ecimal, (o)ctal, (b)inary and (r)aw", 10, 0
