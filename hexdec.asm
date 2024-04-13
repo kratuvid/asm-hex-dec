@@ -1,16 +1,15 @@
 global _start
 
 section .data
-filepath: db "ohyeah", 0
-eight: db "kratuvid", 0
-eight_bad: db "kratuviD", 0
 newline: db 10
 null: db 0
 
 help_arg: db "--help", 0
 generic_arg: db "--xy", 0
+cont_arg: db "--cont", 0
 help_string: db "Options: --help - prints this", 10
 			 db "         --xy - convert from base x to y", 10
+			 db "         --cont - run indefinitely", 10
 			 db "Bases: he(x)adecimal, (d)ecimal, (o)ctal, (b)inary and (r)aw", 10, 0
 all_bases_string: db "xdobr", 0
 
@@ -18,12 +17,6 @@ decimal_syms: db "0123456789"
 hexadecimal_syms: db "0123456789abcdef"
 octal_syms: db "012345678"
 binary_syms: db "01"
-
-O_CREAT: equ 100o
-O_APPEND: equ 2000o
-O_RDONLY: equ 0o
-O_WRONLY: equ 1o
-O_RDWR: equ 2o
 
 
 section .text
@@ -344,16 +337,22 @@ print_help:
 	pop rbp
 	ret
 
-; returns: from is in `al`, and to is in the `ah` register. 0 if failed
+; returns: from is in `al` register
+;          to is in the `ah` register
+;          0 if an error ocurred
+;          16th bit is on if --cont
 parse_arguments:	; (void* _startrbp +16)
 	push rbp
 	mov rbp, rsp
 	push r12
+	push r15
+
+	mov r15, 0
 
 	mov r12, [rbp + 16]
 
 	cmp qword [r12], 1
-	jle .help_and_quit
+	jle .handle_help
 
 	mov r8, 2
 	jmp .loopcheck
@@ -365,7 +364,17 @@ parse_arguments:	; (void* _startrbp +16)
 		add rsp, 16
 		pop r8
 		cmp rax, 0
-		je .help_and_quit
+		je .handle_help
+
+		push r8
+		push cont_arg
+		push qword [r12 + 8 * r8]
+		call strcmp
+		add rsp, 16
+		pop r8
+		cmp rax, 0
+		je .handle_cont
+		.handle_cont_return:
 
 		push r8
 		push qword [r12 + 8 * r8]
@@ -382,12 +391,17 @@ parse_arguments:	; (void* _startrbp +16)
 			cmp r8, [r12]
 			jle .loop
 
-	mov rax, 0
-
 	.exit:
+		mov rax, r15
+
+		pop r15
 		pop r12
 		pop rbp
 		ret
+
+	.handle_cont:
+		or r15, 0x010000
+		jmp .handle_cont_return
 
 	.handle_xy:
 		push r13
@@ -433,25 +447,25 @@ parse_arguments:	; (void* _startrbp +16)
 		mov rax, r14
 		or rax, r13
 
-		pop r14
-		pop r13
-		jmp .exit
+		or r15, rax
 
 		.handle_xy_return_wrap:
 			pop r14
 			pop r13
 			jmp .handle_xy_return
 
-	.help_and_quit:
+	.handle_help:
 		call print_help
 		mov rdi, 1
 		call exit
 
-run:	; (uint16 from +16, uint16 to +18)
+run:	; (uint16 from +16, uint16 to +18; uint16 cont +20)
 	push rbp
 	mov rbp, rsp
 
 	sub rsp, 8
+
+	.run_begin:
 
 	mov r8, 0
 	.loop_read:
@@ -502,12 +516,10 @@ run:	; (uint16 from +16, uint16 to +18)
 	jmp .switch_print_out
 
 	.switch_print_out:
-		add rsp, 8
+		add rsp, 8					; pop arguments of print_uint64_*
 
-	mov rdi, 1
-	mov rsi, newline
-	mov rdx, 1
-	call write
+	cmp word [rbp + 20], 1
+	je .run_begin
 	
 	add rsp, 8
 
@@ -521,13 +533,19 @@ _start:
 	call parse_arguments
 	add rsp, 8
 
-	cmp rax, 0
+	mov rcx, rax
+	cmp cx, 0
 	mov rdi, 1
 	je .exit
 
 	mov rcx, rax
+	mov rdi, rax
 	and rax, 0x00000000000000ff
+	and rcx, 0x000000000000ff00
 	shr rcx, 8
+	and rdi, 0x0000000000010000
+	shr rdi, 16
+	push di
 	push cx
 	push ax
 	call run
@@ -613,10 +631,10 @@ tests:
 
 	; ------------
 
-	mov rdi, filepath
-	mov rsi, O_RDONLY
-	mov rdx, 0
-	call open
+	; mov rdi, filepath
+	; mov rsi, O_RDONLY
+	; mov rdx, 0
+	; call open
 
 	mov rdi, rsp
 	push 33
