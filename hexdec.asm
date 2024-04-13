@@ -32,6 +32,11 @@ exit:	; (int exit_code)
 	syscall
 	ret
 
+read:	; (int fd, void* buffer, int count)
+	mov rax, 0
+	syscall
+	ret
+
 open:	; (str filepath, int flags, int mode)
 	mov rax, 2
 	syscall
@@ -442,8 +447,98 @@ parse_arguments:	; (void* _startrbp +16)
 		mov rdi, 1
 		call exit
 
+run:	; (uint16 from +16, uint16 to +18)
+	push rbp
+	mov rbp, rsp
+
+	sub rsp, 8
+
+	mov r8, 0
+	.loop_read:
+		mov rdi, 0
+		lea rsi, [rbp - 8 + r8]
+		mov r9, 8
+		sub r9, r8
+		mov rdx, r9
+		call read
+
+		add r8, rax
+		.loop_read_check:
+			cmp r8, 8
+			jl .loop_read
+
+	push qword [rbp - 8]
+
+	cmp word [rbp + 18], 0x0078		; 'x\0'
+	jne .switch_print_d
+	call print_uint64_hexadecimal
+	jmp .switch_print_out
+
+	.switch_print_d:
+	cmp word [rbp + 18], 0x0064		; 'd\0'
+	jne .switch_print_o
+	call print_uint64_decimal
+	jmp .switch_print_out
+
+	.switch_print_o:
+	cmp word [rbp + 18], 0x006f		; 'o\0'
+	jne .switch_print_b
+	call print_uint64_octal
+	jmp .switch_print_out
+
+	.switch_print_b:
+	cmp word [rbp + 18], 0x0062		; 'b\0'
+	jne .switch_print_r
+	call print_uint64_binary
+	jmp .switch_print_out
+
+	.switch_print_r:
+	cmp word [rbp + 18], 0x0072		; 'r\0'
+	jne .switch_print_out
+	mov rdi, 1
+	lea rsi, [rbp - 8]
+	mov rdx, 8
+	call write
+	jmp .switch_print_out
+
+	.switch_print_out:
+		add rsp, 8
+
+	mov rdi, 1
+	mov rsi, newline
+	mov rdx, 1
+	call write
+	
+	add rsp, 8
+
+	pop rbp
+	ret
+
 _start:
 	mov rbp, rsp
+
+	push rbp
+	call parse_arguments
+	add rsp, 8
+
+	cmp rax, 0
+	mov rdi, 1
+	je .exit
+
+	mov rcx, rax
+	and rax, 0x00000000000000ff
+	shr rcx, 8
+	push cx
+	push ax
+	call run
+	add rsp, 4
+
+	mov rdi, 0
+	.exit:
+		call exit
+
+tests:
+	; ----------
 
 	push rbp
 	call parse_arguments
