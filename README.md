@@ -8,3 +8,6 @@ Options: --help - prints this
          --cont - run indefinitely
 Bases: he(x)adecimal, (d)ecimal, (o)ctal, (b)inary and (r)aw
 ```
+
+# Todo
+- [ ] Convert input in a particular base to a raw number
