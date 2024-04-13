@@ -11,7 +11,7 @@ help_string: db "Options: --help - prints this", 10
 			 db "         --xy - convert from base x to y", 10
 			 db "         --cont - run indefinitely", 10
 			 db "Bases: he(x)adecimal, (d)ecimal, (o)ctal, (b)inary and (r)aw", 10, 0
-all_bases_string: db "xdobr", 0
+bases_string: db "xdobr", 0
 
 decimal_syms: db "0123456789"
 hexadecimal_syms: db "0123456789abcdef"
@@ -40,9 +40,9 @@ write:	; (int fd, void* buffer, int count)
 	syscall
 	ret
 
-; returns: 0 if is in, else 1
-; checks if char is in str
-; is expected to have a null terminator
+; Returns: 0: `char` is in `str`, 1: otherwise
+; Args: `str`: String to check against
+;       `char`: Character to check with
 strin:		; (uint16 char +16, char* str +18)
 	push rbp
 	mov rbp, rsp
@@ -75,8 +75,9 @@ strin:		; (uint16 char +16, char* str +18)
 		pop rbp
 		ret
 
-; expected to have a null terminator
-strlen:		; (char* buffer +16)
+; Returns: Length of `str`
+; Args: `str`: null terminated string
+strlen:		; (char* str +16)
 	push rbp
 	mov rbp, rsp
 	
@@ -95,8 +96,9 @@ strlen:		; (char* buffer +16)
 		pop rbp
 		ret
 
-; like write but stops when it sees NULL. be careful using it
-print:		; (uint64 fd +16, void* buffer +24)
+; Args: `fd`: file descriptor to write to
+;       `str`: null terminated string
+print:		; (uint64 fd +16, char* str +24)
 	push rbp
 	mov rbp, rsp
 
@@ -119,6 +121,9 @@ print:		; (uint64 fd +16, void* buffer +24)
 		pop rbp
 		ret
 
+; Args: `buffer`: Buffer to fill
+;       `size`: How many bytes to fill
+;       `what`: What to fill each byte with
 memset8:		; (void* buffer +16, uint64 size +24, uint16 what +32)
 	push rbp
 	mov rbp, rsp
@@ -148,11 +153,12 @@ memset8:		; (void* buffer +16, uint64 size +24, uint16 what +32)
 	pop rbp
 	ret
 
-; number: number to print
-; base: base to print in. like 16
-; max_string: length of the string which can contain the largest number
-;             eg. len(str(0xffffffffffffffff)) * 1 for base 10
-; symbols: symbols to represent individual positions. for base 16, "0123456789abcdef"
+; Args: `number`: Raw number to print
+;       `base`: Base to print in
+;       `max_string`: Length of the string in bytes which can contain `number` maxxed
+;                     Eg. len(str(0xffffffffffffffff)) * 1 for base 10
+;       `symbols`: Symbols of length `base`, which will be used to represent the raw value
+;                  Eg. "0123456789abcdef" for base 16
 print_uint64_generic:	; (uint64 number +16, uint64 base +24, uint64 max_string +32, char* symbols +40)
 	push rbp
 	mov rbp, rsp
@@ -234,6 +240,7 @@ print_uint64_generic:	; (uint64 number +16, uint64 base +24, uint64 max_string +
 	pop rbp
 	ret
 
+; Args: `number`: Raw number to print
 print_uint64_decimal:	; (uint64 number +16)
 	push rbp
 	mov rbp, rsp
@@ -248,6 +255,7 @@ print_uint64_decimal:	; (uint64 number +16)
 	pop rbp
 	ret
 
+; Args: `number`: Raw number to print
 print_uint64_hexadecimal:	; (uint64 number +16)
 	push rbp
 	mov rbp, rsp
@@ -262,6 +270,7 @@ print_uint64_hexadecimal:	; (uint64 number +16)
 	pop rbp
 	ret
 
+; Args: `number`: Raw number to print
 print_uint64_octal:	; (uint64 number +16)
 	push rbp
 	mov rbp, rsp
@@ -276,6 +285,7 @@ print_uint64_octal:	; (uint64 number +16)
 	pop rbp
 	ret
 
+; Args: `number`: Raw number to print
 print_uint64_binary:	; (uint64 number +16)
 	push rbp
 	mov rbp, rsp
@@ -290,8 +300,10 @@ print_uint64_binary:	; (uint64 number +16)
 	pop rbp
 	ret
 
-; return 0 if equal, else 1
-; both strings are expected to have a null terminator
+; Desc: Compares and checks if strings are equal
+; Returns: 0: if equal, 1: otherwise
+; Args: `first`: null terminated string
+;       `second`: null terminated string
 strcmp:		; (char* first +16, char* second +24)
 	push rbp
 	mov rbp, rsp
@@ -325,6 +337,7 @@ strcmp:		; (char* first +16, char* second +24)
 		pop rbp
 		ret
 
+; Desc: Prints the help string
 print_help:
 	push rbp
 	mov rbp, rsp
@@ -337,11 +350,12 @@ print_help:
 	pop rbp
 	ret
 
-; returns: from is in `al` register
-;          to is in the `ah` register
-;          0 if an error ocurred
-;          16th bit is on if --cont
-parse_arguments:	; (void* _startrbp +16)
+; Returns: Bits 0-15 == 0: if an error occured
+;          Bits 0-7: base to convert from
+;          Bits 8-15: base to convert to
+;          Bit 16 == 1: if the program should run indefinitely
+; Args: `start_rbp`: rbp register in the _start subroutine
+parse_arguments:	; (void* start_rbp +16)
 	push rbp
 	mov rbp, rsp
 	push r12
@@ -422,7 +436,7 @@ parse_arguments:	; (void* _startrbp +16)
 		shr r14, 24
 
 		push r8
-		push all_bases_string
+		push bases_string
 		mov rax, r13
 		push ax
 		call strin
@@ -433,7 +447,7 @@ parse_arguments:	; (void* _startrbp +16)
 		je .handle_xy_return_wrap
 
 		push r8
-		push all_bases_string
+		push bases_string
 		mov rax, r14
 		push ax
 		call strin
@@ -459,6 +473,9 @@ parse_arguments:	; (void* _startrbp +16)
 		mov rdi, 1
 		call exit
 
+; Args: `from`: base to convert from
+;       `to`: base to conver to
+;       `cont`: whether the program should run indefinitely
 run:	; (uint16 from +16, uint16 to +18; uint16 cont +20)
 	push rbp
 	mov rbp, rsp
@@ -538,13 +555,13 @@ _start:
 	mov rdi, 1
 	je .exit
 
-	mov rcx, rax
 	mov rdi, rax
-	and rax, 0x00000000000000ff
-	and rcx, 0x000000000000ff00
-	shr rcx, 8
-	and rdi, 0x0000000000010000
+	mov rcx, rax
+	and rdi, 0x10000
 	shr rdi, 16
+	and rcx, 0xff00
+	shr rcx, 8
+	and rax, 0xff
 	push di
 	push cx
 	push ax
