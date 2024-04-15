@@ -1,6 +1,6 @@
 global _start
 
-section .data
+section .rodata
 newline: db 10
 null: db 0
 
