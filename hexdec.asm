@@ -567,7 +567,7 @@ _start:
 	push cx
 	push ax
 	call run
-	add rsp, 4
+	add rsp, 6
 
 	mov rdi, 0
 	.exit:
